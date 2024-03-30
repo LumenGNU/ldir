@@ -1,0 +1,309 @@
+#!/usr/bin/env python
+
+"""
+ldir
+----
+
+Назначение: удобное управление большим количеством файлов и каталогов.
+
+Сценарий использования: после запуска в текстовом редакторе откривается
+специальный ldir-файл. Пользователь может редактировать этот файл для
+выполнения таких операий над файлами/каталогами:
+ - Создание
+ - Удаление
+ - Переименование
+ - Копирование
+ - Перемещение
+ - Редактирование прав доступа
+ - Редактирование владельца и группы
+ - Редактирование символьных ссылок.
+
+После закрития файла все внесенные изменения будут отображены на файловую
+систему.
+
+*****
+ТЕРМИНОЛОГИЯ
+
+Редактор - текстовый редактор, который открывается приложением ldir для редактирования файла.
+
+Список элементов - список файлов и, возможно, директорий, с которыми пользователь планирует
+произвести операции.
+
+ldir-файл - файл, который открывается в Редакторе и содержит Список элементов для изменения.
+
+Обрабатываемая директория - Это существующая директория в файловой системе, элементы которой будут
+обрабатываться утилитой.
+
+*****
+
+Процесс Работы:
+Открытие Редактора: При вызове ldir, утилита открывает ldir-файл в выбранном текстовом редакторе.
+Редактирование Файла: Пользователь редактирует файл, следуя определенным правилам для указания
+операций над файлами и каталогами.
+Анализ Изменений: После сохранения и закрытия файла, утилита анализирует внесенные изменения и
+выполняет соответствующие действия в файловой системе.
+
+*****
+
+TODO 1. Интеграция с текстовым редактором
+TODO 2. Формат ldir-файла
+TODO 3. Анализ изменений
+TODO 4. Безопасность
+
+*****
+
+ПАРАМЕТРЫ ЗАПУСКА:
+ldir <params> <directory>
+  --help        -h  Выводит краткую справку
+  --editor      -e  Редактор
+  --editor-args -g  Параметры запуска редактора
+  --recursive   -r  Рекурсивно обрабатывать директорию
+  --directory   -d  Обрабатывать и директории тоже
+
+*****
+
+ИНТЕГРАИЯ С ТЕКСТОВИМ РЕДАКТОРОМ
+--------------------------------
+
+Выбор редактора:
+Если при запуске указан параметр --editor -- будет использован указаный редактор.
+Далее, если пользователь не указал редактор, то будет проверено запущено ли приложение в сеансе X,
+и если это так будет проверена переменная среды VISUAL, и если она установлена будет использован
+редактор указаный в этой переменной, если не установлена -- будет проверена переменная среды EDITOR
+и если она установлена будет использован редактор указаный в этой переменной, если не установлена
+будет использован первый из доступных редакторов:
+mcedit
+nano
+vim
+vi
+Если сеанс X не доступен, все тоже самое, но переменная VISUAL не проверяется.
+
+
+"""
+
+from __future__ import annotations
+from typing import Optional
+from dataclasses import dataclass
+import os
+import argparse
+import shutil
+import subprocess
+import tempfile
+import uuid
+from datetime import datetime
+from pathlib import Path
+
+
+@dataclass
+class App:
+    '''
+    Класс-приложение. .Основной класс -- все происходит здесь
+    '''
+    params: Optional[argparse.Namespace] = None
+
+    def parse_args(self) -> argparse.Namespace:
+        """
+        Парсит аргументы командной строки.
+
+        Returns:
+            argparse.Namespace: Объект с аргументами командной строки.
+        """
+        # Создаем парсер
+        parser = argparse.ArgumentParser(
+            description="ldir - утелита для удобной работы с большим количеством файлов и каталогов.",
+            add_help=False,
+        )
+
+        group_0 = parser.add_argument_group("Общие")
+        group_0.add_argument(
+            "-h",
+            "--help",
+            action="help",
+            default=argparse.SUPPRESS,
+            help="Показать справку и вийти.",
+        )
+
+        # Добавляем позиционный аргумент
+        parser.add_argument_group("Позиционный параметр").add_argument(
+            "work_path",
+            type=str,
+            nargs="?",
+            default=".",
+            help="Путь к директории для обработки. По умолчанию текущая директория.",
+        )
+
+        # Добавляем аргументы
+        group_editor = parser.add_argument_group("Редактор")
+        group_editor.add_argument(
+            "-e",
+            "--editor",
+            type=str,
+            required=False,
+            default="",
+            help="Программа которая будет вызвана в качестве редактора.",
+        )
+        group_editor.add_argument(
+            "-g",
+            "--editor-args",
+            type=str,
+            required=False,
+            default="",
+            help="Аргументы запуска для редактора.",
+        )
+
+        # Парсим аргументы
+        self.params = parser.parse_args()
+
+        # проверки
+
+        # путь self.params.work_path -- должен существовать и быть директорией
+        if not os.path.isdir(self.params.work_path):
+            raise ValueError(
+                f"Указанный путь не существует или не является директорией! {self.params.work_path}"
+            )
+
+        # команда в self.params.editor -- должна быть доступна в $PATH или по путь и иметь разрешение на выполнение
+        # if self.params.editor:
+        #     if not shutil.which(self.params.editor):
+        #         raise ValueError(
+        #             f"Команда `{self.params.editor}` не найдена, или нет прав на запуск!"
+        #         )
+
+        return self.params
+
+    @staticmethod
+    def x_check() -> bool:
+        """
+        Проверяет, запущено ли приложение в графической сессии X Window.
+
+        Возвращает:
+            bool: True, если приложение запущено в сессии X, иначе False.
+        """
+        return "DISPLAY" in os.environ
+
+    def editor_run(self, file: str) -> int:
+        """
+        Запускает текстовый редактор для редактирования указанного файла.
+
+        Выбирает редактор на основе параметров запуска, переменных среды или доступности стандартных редакторов.
+
+        Параметры:
+            file (str): Путь к файлу, который нужно открыть в редакторе.
+
+        Возвращает:
+            int: Код возврата процесса редактора или -1, если редактор не найден.
+
+        Вызывает:
+            RuntimeError: Если не найден доступный редактор.
+
+        Выбор редактора:
+            Если при запуске указан параметр --editor -- будет использован указаный редактор.
+            Далее, если пользователь не указал редактор, то будет проверено запущено ли приложение в сеансе X,
+            и если это так будет проверена переменная среды VISUAL, и если она установлена будет использован
+            редактор указаный в этой переменной, если не установлена -- будет проверена переменная среды EDITOR
+            и если она установлена будет использован редактор указаный в этой переменной, если не установлена
+            будет использован первый из доступных редакторов:
+            mcedit
+            nano
+            vim
+            vi
+            Если сеанс X не доступен, все тоже самое, но переменная VISUAL не проверяется.
+        """
+        editor: Optional[str] = None
+        if self.params and self.params.editor:
+            editor = self.params.editor
+        elif self.x_check() and os.getenv("VISUAL"):
+            editor = os.getenv("VISUAL")
+        elif os.getenv("EDITOR"):
+            editor = os.getenv("EDITOR")
+        else:
+            for ec in ("mcedit", "nano", "vim", "vi"):
+                if shutil.which(ec):
+                    editor = ec
+                    break
+
+        if editor:
+            if not shutil.which(editor):
+                raise ValueError(
+                    f"Команда `{editor}` не найдена, или нет прав на запуск!"
+                )
+            # Добавлено {file} для включения имени файла в команду редактора
+            return (
+                subprocess.run(
+                    f'{editor} {self.params.editor_args if self.params else ""} {file}',
+                    shell=True, check=False,
+                ).returncode
+                or -1
+            )
+        else:
+            raise RuntimeError("Не найден доступный редактор.")
+
+
+class LdirFile:
+    '''
+    
+    '''
+    def __init__(self, uuid_str: str, directory: Optional[str] = None) -> None:
+        self._uuid = uuid_str
+        self._directory = directory
+        self._ldir_file_name = f"{uuid_str}.ldir"
+        self._ldir_file_path = os.path.join(tempfile.gettempdir(), self._ldir_file_name)
+        self._timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        if directory:
+            self._create_ldir_file()
+
+    @classmethod
+    def create_for_directory(cls, directory: str) -> LdirFile:
+        """Фабричный метод для создания ldir-файла для указанной директории."""
+        uuid_str = str(uuid.uuid4())
+        instance = cls(uuid_str, directory)
+        return instance
+
+    # @classmethod
+    # def load_by_uuid(cls, uuid_str: str) -> LdirFile:
+    #     """Фабричный метод для загрузки существующего ldir-файла по UUID."""
+    #     instance = cls(uuid_str)
+    #     if not os.path.exists(instance._ldir_file_path):
+    #         raise FileNotFoundError(f"LDir файл с UUID {uuid_str} не найден.")
+    #     return instance
+
+
+
+    def _create_ldir_file(self) -> None:
+        """Создает ldir-файл для ассоциированной директории."""
+        if not self._directory:
+            raise ValueError("Директория не указана.")
+        self._ldir_file_path = os.path.join(tempfile.gettempdir(), self._uuid)
+        with open(self._ldir_file_path, 'w', encoding='utf-8') as temp_file:
+            temp_file.write(f"{self._uuid} {self._timestamp}\n")
+            entries = os.listdir(self._directory)
+            for entry in entries:
+                temp_file.write(f"{entry}\n")
+
+    @property
+    def uuid(self):
+        return self._uuid
+
+    @property
+    def work_directory_path(self):
+        return self._directory
+
+    # @property
+    # def work_directory_name():
+        # return ..
+
+    @property
+    def temp_file_path(self):
+        return self._ldir_file_path
+
+class Entity(Path):
+    pass
+
+def main() -> None:
+    ''' точка входа '''
+    app = App()
+    app.parse_args()
+
+
+if __name__ == "__main__":
+    main()
