@@ -196,7 +196,7 @@ interface DirEntryProtocol {
   {abstract} +stat(bool): os.stat_result
 }
 
-class FileSystemElement {
+abstract class FileSystemElement {
   +name: str
   +path: str
   +inode: int
@@ -236,21 +236,24 @@ class RootDirectoryElement {
   ---
 }
 
-class Config {
-  +set_config(. . .): Config
+
+interface Iterator {
+  {abstract} +__next__():
+  {abstract} +__iter__(): Optional[FileElement | DirectoryElement]
 }
+
+
 
 DirEntryProtocol <|.. FileSystemElement : implements
 FileSystemElement <|-- FileElement : extends
 FileSystemElement <|-- DirectoryElement : extends
 DirectoryElement <|-- RootDirectoryElement : extends
 
+DirectoryElement -left-> Iterator : realize
+
 
 caption fs_elements.py - Диаграмма классов
 @enduml
-
-@enduml
-
 ```
 
 **`DirEntryProtocol`**:
@@ -263,13 +266,14 @@ caption fs_elements.py - Диаграмма классов
 Конкретная реализация `FileSystemElement` описывающая фай.
 
 **`DirectoryElement`**:
-Конкретная реализация `FileSystemElement` описывающая директорию. В дополнение к базовым свойствам и методам, предоставляет методы для загрузки содержимого директории `load_content`, метод для обхода дерева -- `apply_to_each`, и метод для тестовой печати содержимого дерева `print_content`.
+Конкретная реализация `FileSystemElement` описывающая директорию. В дополнение к базовым свойствам и методам. Метод для обхода дерева -- `apply_to_each`, и метод для тестовой печати содержимого дерева `print_content`.
+
+Класс, также, реализует интерфейс `Iterator` для обхода дерева (например в цикле `for in`).
 
 **`RootDirectoryElement`**:
-Специализированная реализация `DirectoryElement`, предназначенная для представления корневой директории. Включает в себя дополнительную логику инициализации, позволяющую настраивать параметры обхода файловой системы через объект `Config`.
+Специализированная реализация `DirectoryElement`, предназначенная для представления корневой директории. Включает в себя дополнительную логику инициализации.
 
-`Config`:
-Класс, используемый для хранения конфигурации обхода директории. Позволяет устанавливать параметры обхода файловой системы. Конфигурация "замораживается" после первого вызова метода `set_config` для предотвращения изменений в процессе обхода.
+
 
 Эти классы образуют основу модуля для взаимодействия с элементами файловой системы, позволяя получать информацию о файлах и директориях, а также обходить файловую систему и выводить ее содержимое.
 

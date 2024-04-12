@@ -28,14 +28,13 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 import os
 import sys
-from typing import List, Optional, Protocol, Union, runtime_checkable, Callable, cast
+from typing import Generator, Iterator, List, Optional, Protocol, Union, Callable, cast, Dict, Any
 
 from .logger import get_logger
 
 logger = get_logger(__name__)
 
 
-@runtime_checkable  # @todo: а этот декоратор и правда нужен?
 class DirEntryProtocol(Protocol):
     """Интерфейс для работы с объектами os.DirEntry
     методы:
@@ -80,29 +79,31 @@ class FileSystemElement(ABC):
 
     def __init__(self, entry: Union[os.DirEntry, DirEntryProtocol], level: int) -> None:  # Инициализация
         # Элемент ФС
-        self._entry = entry
+        self.__entry = entry
         self.__parent: Optional[DirectoryElement] = None
 
-        self._level = level
+        self.__level = level
         # @fixme: этот способ определения скрытых файлов платформозависимый
-        self._is_hidden = self._entry.name.startswith(".")
+        self.__is_hidden = self.__entry.name.startswith(".")
+
+        self._last_in_dir = False
 
     # region Методы реализующие протокол DirEntryProtocol
 
     @property
     def name(self) -> str:
         """Имя элемента"""
-        return self._entry.name
+        return self.__entry.name
 
     @property
     def path(self) -> str:
         """Путь к элементу"""
-        return self._entry.path
+        return self.__entry.path
 
     @property
     def inode(self) -> int:
         """Индексный дескриптор элемента"""
-        return self._entry.inode()
+        return self.__entry.inode()
 
     @property
     @abstractmethod
@@ -119,24 +120,24 @@ class FileSystemElement(ABC):
     @property
     def is_symlink(self) -> bool:
         """Является ли элемент символической ссылкой"""
-        return self._entry.is_symlink()
+        return self.__entry.is_symlink()
 
     @property
     def stat(self) -> os.stat_result:
         """Возвращает информацию о файле (`os.stat()`)"""
-        return self._entry.stat()
+        return self.__entry.stat()
 
     # endregion
 
     @property
     def level(self) -> int:
         """Уровень вложенности элемента"""
-        return self._level
+        return self.__level
 
     @property
     def is_hidden(self) -> bool:
         """Является ли элемент скрытым"""
-        return self._is_hidden
+        return self.__is_hidden
 
     @property
     def parent(self) -> Optional[DirectoryElement]:
@@ -150,6 +151,10 @@ class FileSystemElement(ABC):
             self.__parent = parent
         else:
             logger.debug("Родительский элемент уже установлен!")  # @for_debug
+
+    @property
+    def is_last_in_dir(self):
+        return self._last_in_dir
 
     def __repr__(self):
         return f"{self.path}{'/' if self.is_dir else ''}"
@@ -169,85 +174,28 @@ class FileElement(FileSystemElement):
         return True
 
 
-class Config:
-    """Класс для хранения конфигурации обхода директории.
-
-    Конфигурация  *замораживается после первого вызова* метода  `set_config` (обычно в `RootDirectory`).
-    Повторные вызовы метода `set_config`, для этого же объекта, с другими параметрами игнорируются.
-    """
-
-    def __init__(self) -> None:
-        self.__recursive: bool = False
-        self.__subdirectories: bool = True
-        self.__hidden: bool = False
-        self._config_is_set: bool = False
-
-    @property
-    def recursive(self):
-        """Возвращает значение флага recursive."""
-        return self.__recursive
-
-    @property
-    def subdirectories(self):
-        """Возвращает значение флага subdirectories."""
-        return self.__subdirectories
-
-    @property
-    def hidden(self):
-        """Возвращает значение флага hidden."""
-        return self.__hidden
-
-    def set_config(
-        self,
-        recursive: Optional[bool] = None,
-        subdirectories: Optional[bool] = None,
-        hidden: Optional[bool] = None,
-    ) -> Config:
-        """Устанавливает конфигурацию для обхода директории.
-
-        Если любой из параметров не установлен (None), то конфигурация не устанавливается.
-        """
-        if not self._config_is_set:
-            if all(x is not None for x in (recursive, subdirectories, hidden)):
-                # если все параметры имеют значения
-                self.__recursive = cast(bool, recursive)
-                self.__subdirectories = True if self.__recursive else cast(bool, subdirectories)
-                self.__hidden = cast(bool, hidden)
-                self._config_is_set = True
-            else:
-                logger.debug("Конфигурация НЕ установлена!")  # @for_debug
-        else:
-            logger.debug("Конфигурация УЖЕ установлена!")  # @for_debug
-
-        return self
-
-    def __repr__(self) -> str:
-        return f"Config: (recursive={self.recursive}, subdirectories={self.subdirectories}, hidden={self.hidden})"
-
-
 class DirectoryElement(FileSystemElement):
     """Класс DirectoryElement описывает директорию."""
 
-    def __init__(self, entry: Union[DirEntryProtocol, os.DirEntry], level: int, config: Config) -> None:
+    def __init__(self, entry: Union[DirEntryProtocol, os.DirEntry], level: int, **config: Dict[str, Any]) -> None:
         """
         Инициализирует объект DirectoryElement.
         """
         super().__init__(entry, level)
 
         # Список директорий в директории. создается и заполняется в `get_content`
-        self._content_directories: Optional[List[DirectoryElement]] = None
+        self.__content_directories: Optional[List[DirectoryElement]] = None
         # Список файлов в директории. создается и заполняется в `get_content`
-        self._content_files: Optional[List[FileElement]] = None
-        self.__config = config
+        self.__content_files: Optional[List[FileElement]] = None
 
-        self._load_content(self.__config)
+        self._load_content(**config)
 
     # @todo: Подозреваю, это можно распараллеливать.
     # @todo: Фильтрация!
     # @todo: `sort`: `Callable[[FileSystemElement], Any]` - Функция сортировки элементов.
-    # @todo: `filter`: `Callable[[FileSystemElement], bool]` - Функция фильтрации элементов. Если функция вернет `True`,
+    # @todo: `filter`: `Callable[[FileSystemElement], bool]` - Функция фильтрации элементов.
 
-    def _load_content(self, config: Config) -> None:
+    def _load_content(self, **config: Dict[str, Any]) -> None:
         """Заполняет списки файлов и директорий `self._content_directories` и `self._content_files` содержимым
         директории.
 
@@ -273,35 +221,44 @@ class DirectoryElement(FileSystemElement):
         к `self.content_directories` и `self.content_files`.
         """
 
-        if self._content_directories is None or self._content_files is None:
+        if self.__content_directories is None or self.__content_files is None:
 
-            self._content_directories = []
-            self._content_files = []
+            self.__content_directories = []
+            self.__content_files = []
             # Получает содержимое директории.
             # Заполняет списки файлов (self._content_files) и директорий (self._content_directories).
             try:
                 with os.scandir(self.path) as entries:
                     for _entry in entries:
-                        if config.recursive or self.level < 1:
+                        if config["recursive"] or self.level < 1:  # если задано в config обходить все дерево
+                            # содержимое корня обрабатывается всегда
                             if _entry.is_dir():
-                                if config.subdirectories:
-                                    element_directory = DirectoryElement(_entry, self.level + 1, config)
-                                    if config.hidden or not element_directory.is_hidden:
+                                if config["subdirectories"]:  # если задано в config обрабатывать поддиректории
+                                    element_directory = DirectoryElement(_entry, self.level + 1, **config)
+                                    if (
+                                        config["hidden"] or not element_directory.is_hidden
+                                    ):  # если задано в config пропускать скрытые
                                         element_directory.parent = self
-                                        self._content_directories.append(element_directory)
+                                        self.__content_directories.append(element_directory)
                                     else:
                                         del element_directory
                             else:  # _entry.is_file():
                                 element_file = FileElement(_entry, self.level + 1)
-                                if config.hidden or not element_file.is_hidden:
+                                if (
+                                    config["hidden"] or not element_file.is_hidden
+                                ):  # если задано в config пропускать скрытые
                                     element_file.parent = self
-                                    self._content_files.append(element_file)
+                                    self.__content_files.append(element_file)
                                 else:
                                     del element_file
             except PermissionError:
                 print(f"Нет доступа к директории: {self.path}", file=sys.stderr)
 
-            # @todo: Сортировка.
+            if self.__content_files:
+                # @todo: Сортировка файлов.
+                self.__content_files[-1]._last_in_dir = True  # последний файл в списке пометить как "последний"
+
+            # @todo: Сортировка директорий. if self.__content_directories:
 
     @property
     def is_file(self):
@@ -313,40 +270,39 @@ class DirectoryElement(FileSystemElement):
 
     @property
     def is_empty(self) -> bool:
-        """Проверяет, что директория "пуста". Т.е. `content_files` и `content_directories` пусты."""
+        """Проверяет, что директория "пуста". Т.е. `content_files` и `content_directories` не содержат элементов."""
         return not self.content_files and not self.content_directories
 
     @property
     def content_directories(self) -> List[DirectoryElement]:
         """Список поддиректорий в директории."""
-        return cast(List[DirectoryElement], self._content_directories)
+        return cast(List[DirectoryElement], self.__content_directories)
 
     @property
     def content_files(self) -> List[FileElement]:
         """Список файлов в директории."""
-        return cast(List[FileElement], self._content_files)
+        return cast(List[FileElement], self.__content_files)
 
     def print_content(self):
         """Печатает содержимое директории в виде дерева."""
 
-        def func(element: Optional[FileSystemElement], is_last: bool, level: int) -> None:
-            if element is None:
-                # печатать сообщение "пусто" для пустых папок
-                print(" " * (level) + "└─ < пусто >")
-                return
+        def func(element: Union[FileElement, DirectoryElement]) -> None:
 
             if element.is_file:
-                marker = "└─" if is_last else "├─"
+                marker = "└─" if element.is_last_in_dir else "├─"
                 print(" " * (element.level - 1) + marker + " " + element.name)
 
             if element.is_dir:
                 print(" " * (element.level) + "* " + element.name)
+                if cast(DirectoryElement, element).is_empty:
+                    # печатать сообщение "пусто" для пустых папок
+                    print(" " * (element.level) + "└─ < пусто >")
 
-        func(self, self.is_empty, 0)
+        func(self)
         self.apply_to_each(func)
 
-    def apply_to_each(self, func: Callable[[Optional[FileSystemElement], bool, int], None]) -> None:
-        """Применяет функцию к каждому элементу в дереве.
+    def apply_to_each(self, func: Callable[[Union[FileElement, DirectoryElement]], None]) -> None:
+        """Применяет функцию к каждому элементу в дереве. Начиная обход от текущей директории.
 
         Функция `func` будет вызвана для каждого под-элемента, но не для самого элемента.
         Это значит что следующий код не напечатает имя корневой директории:
@@ -380,17 +336,29 @@ class DirectoryElement(FileSystemElement):
         """
 
         if self.is_empty:
-            func(None, True, self.level)
             return
 
-        len_ = len(self.content_files)
-        for i, file in enumerate(self.content_files, start=1):
-            func(cast(FileSystemElement, file), len_ - i < 1, self.level + 1)
+        for file in self.content_files:
+            func(cast(FileElement, file))
 
-        len_ = len(self.content_directories)
-        for i, directory in enumerate(self.content_directories, start=1):
-            func(cast(FileSystemElement, directory), len_ - i < 1, self.level + 1)
+        for directory in self.content_directories:
+            func(cast(DirectoryElement, directory))
             cast(DirectoryElement, directory).apply_to_each(func)
+
+    def __iter__(self) -> Iterator[Optional[Union[FileElement, DirectoryElement]]]:
+        """Генератор, перебирающий все элементы начиная с текущей директории."""
+        # yield self # --root
+        yield from self.__iterate_all_elements()
+
+    def __iterate_all_elements(self) -> Generator[Optional[Union[FileElement, DirectoryElement]], None, None]:
+        """Генератор для перебора дерева элементов."""
+        if self.is_empty:
+            yield None
+        for file in self.content_files:
+            yield file
+        for directory in self.content_directories:
+            yield directory
+            yield from directory.__iterate_all_elements()
 
 
 class RootDirectoryElement(DirectoryElement):
@@ -405,40 +373,44 @@ class RootDirectoryElement(DirectoryElement):
             """Вспомогательный класс, реализация протокола DirEntryProtocol"""
 
             def __init__(self, path: str):
-                self._path = path
-                self._name = os.path.basename(path)
-                self._is_dir = os.path.isdir(path)
-                self._is_file = os.path.isfile(path)
-                self._is_symlink = os.path.islink(path)
-                self._stat = os.stat(path)
+                self.__path = path
+                self.__name = os.path.basename(path)
+                self.__is_dir = os.path.isdir(path)
+                self.__is_file = os.path.isfile(path)
+                self.__is_symlink = os.path.islink(path)
+                self.__stat = os.stat(path)
 
             @property
             def name(self) -> str:
-                return self._name
+                return self.__name
 
             @property
             def path(self) -> str:
-                return self._path
+                return self.__path
 
             def inode(self) -> int:
-                return self._stat.st_ino
+                return self.__stat.st_ino
 
             def is_dir(self, *, follow_symlinks: bool = True) -> bool:
-                return self._is_dir
+                return self.__is_dir
 
             def is_file(self, *, follow_symlinks: bool = True) -> bool:
-                return self._is_file
+                return self.__is_file
 
             def is_symlink(self) -> bool:
-                return self._is_symlink
+                return self.__is_symlink
 
             def stat(self, *, follow_symlinks: bool = True) -> os.stat_result:
-                return self._stat
+                return self.__stat
 
-        config = Config().set_config(recursive, subdirectories, hidden)
+        config: Dict[str, Any] = {
+            "recursive": recursive,
+            "subdirectories": True if recursive else subdirectories,
+            "hidden": hidden,
+        }
 
         # инициализация базового класса
-        super().__init__(DirEntry(os.path.abspath(os.path.normpath(path))), level=0, config=config)
+        super().__init__(DirEntry(os.path.abspath(os.path.normpath(path))), level=0, **config)
 
 
 if __name__ == "__main__":
