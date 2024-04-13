@@ -25,10 +25,10 @@ __file__ = "fs_elements.py"
 """
 
 from __future__ import annotations
+from typing import Generator, Iterator, List, Optional, Protocol, Union, Callable, cast, Dict, Any
 from abc import ABC, abstractmethod
 import os
 import sys
-from typing import Generator, Iterator, List, Optional, Protocol, Union, Callable, cast, Dict, Any
 
 from .logger import get_logger
 
@@ -346,19 +346,24 @@ class DirectoryElement(FileSystemElement):
             cast(DirectoryElement, directory).apply_to_each(func)
 
     def __iter__(self) -> Iterator[Optional[Union[FileElement, DirectoryElement]]]:
-        """Генератор, перебирающий все элементы начиная с текущей директории."""
-        # yield self # --root
-        yield from self.__iterate_all_elements()
-
-    def __iterate_all_elements(self) -> Generator[Optional[Union[FileElement, DirectoryElement]], None, None]:
-        """Генератор для перебора дерева элементов."""
+        """Возвращает итератор, который перебирает все элементы в дереве, начиная с текущей директории."""
         if self.is_empty:
             yield None
         for file in self.content_files:
             yield file
         for directory in self.content_directories:
             yield directory
-            yield from directory.__iterate_all_elements()
+            yield from directory.__iter__()
+
+    # def __iterate_all_elements(self) -> Generator[Optional[Union[FileElement, DirectoryElement]], None, None]:
+    #     """Генератор для перебора дерева элементов."""
+    #     if self.is_empty:
+    #         yield None
+    #     for file in self.content_files:
+    #         yield file
+    #     for directory in self.content_directories:
+    #         yield directory
+    #         yield from directory.__iterate_all_elements()
 
 
 class RootDirectoryElement(DirectoryElement):

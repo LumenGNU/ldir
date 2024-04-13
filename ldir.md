@@ -189,6 +189,7 @@ skinparam classAttributeIconSize 0
 interface DirEntryProtocol {
   {abstract} +name: str
   {abstract} +path: str
+  ..
   {abstract} +inode(): int
   {abstract} +is_dir(bool): bool
   {abstract} +is_file(bool): bool
@@ -197,6 +198,7 @@ interface DirEntryProtocol {
 }
 
 abstract class FileSystemElement {
+  --
   +name: str
   +path: str
   +inode: int
@@ -206,26 +208,28 @@ abstract class FileSystemElement {
 
   +is_symlink: bool
   +stat: os.stat_result
-  --
+  __
   +level: int
   +is_hidden: bool
   +parent: Optional[DirectoryElement]
 }
 
 class FileElement {
+  --
   +is_dir: bool
   +is_file: bool
 }
 
 class DirectoryElement {
+  --
   +is_dir: bool
   +is_file: bool
   +is_empty: bool
-  ---
+  __
   +content_directories: List[DirectoryElement]
   +content_files: List[FileElement]
-  ---
-  +load_content(config: Config): void
+  __
+  +load_content(**config): void
   +apply_to_each(func: Callable): void
 
   +print_content(): void
@@ -233,12 +237,11 @@ class DirectoryElement {
 
 class RootDirectoryElement {
   +RootDirectoryElement(path: str, . . .): void
-  ---
+  --
 }
 
 
 interface Iterator {
-  {abstract} +__next__():
   {abstract} +__iter__(): Optional[FileElement | DirectoryElement]
 }
 
@@ -249,7 +252,7 @@ FileSystemElement <|-- FileElement : extends
 FileSystemElement <|-- DirectoryElement : extends
 DirectoryElement <|-- RootDirectoryElement : extends
 
-DirectoryElement -left-> Iterator : realize
+DirectoryElement -up-> Iterator : realize
 
 
 caption fs_elements.py - Диаграмма классов
@@ -292,7 +295,11 @@ root = RootDirectoryElement("/path/to/directory", **config)
 root.print_content() # Вывод содержимого директории
 
 # перебор всех элементов дерева и печать имени и пути
-root.apply_to_each(lambda x,_,_: print(x.name, x.path))
+root.apply_to_each(lambda x: print(x.name, x.path))
+
+for e in root:
+    if e is not None:
+        print("file" if e.is_file else " dir", e.name)
 
 ```
 
