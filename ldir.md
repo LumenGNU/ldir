@@ -205,14 +205,19 @@ abstract class FileSystemElement {
 
   +{abstract} is_dir: bool
   +{abstract} is_file: bool
+  +{abstract} is_symlink: bool
 
-  +is_symlink: bool
   +stat: os.stat_result
   __
   +level: int
   +is_hidden: bool
   +parent: Optional[DirectoryElement]
+  --
+  +is_last_in_dir
+  +frmt_name
 }
+
+FileSystemElement .up.|> DirEntryProtocol : implements
 
 class FileElement {
   --
@@ -220,40 +225,34 @@ class FileElement {
   +is_file: bool
 }
 
+FileElement -up-|> FileSystemElement  : extends
+
 class DirectoryElement {
   --
   +is_dir: bool
   +is_file: bool
+  --
   +is_empty: bool
   __
   +content_directories: List[DirectoryElement]
   +content_files: List[FileElement]
   __
-  +load_content(**config): void
   +apply_to_each(func: Callable): void
-
-  +print_content(): void
 }
-
-class RootDirectoryElement {
-  +RootDirectoryElement(path: str, . . .): void
-  --
-}
-
 
 interface Iterator {
   {abstract} +__iter__(): Optional[FileElement | DirectoryElement]
 }
 
-
-
-DirEntryProtocol <|.. FileSystemElement : implements
-FileSystemElement <|-- FileElement : extends
-FileSystemElement <|-- DirectoryElement : extends
-DirectoryElement <|-- RootDirectoryElement : extends
-
+DirectoryElement -up-|> FileSystemElement : extends
 DirectoryElement -up-> Iterator : realize
 
+class RootDirectoryElement {
+  +RootDirectoryElement(path: str, . . .)
+  --
+}
+
+RootDirectoryElement -up-|> DirectoryElement : extends
 
 caption fs_elements.py - Диаграмма классов
 @enduml

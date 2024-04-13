@@ -25,7 +25,7 @@ __file__ = "fs_elements.py"
 """
 
 from __future__ import annotations
-from typing import Generator, Iterator, List, Optional, Protocol, Union, Callable, cast, Dict, Any
+from typing import Iterator, List, Optional, Protocol, Union, Callable, cast, Dict, Any
 from abc import ABC, abstractmethod
 import os
 import sys
@@ -77,7 +77,12 @@ class FileSystemElement(ABC):
 
     """
 
-    def __init__(self, entry: Union[os.DirEntry, DirEntryProtocol], level: int) -> None:  # Инициализация
+    def __init__(
+        self,
+        entry: Union[os.DirEntry, DirEntryProtocol],
+        level: int,
+        immutable: bool = False,
+    ) -> None:  # Инициализация
         # Элемент ФС
         self.__entry = entry
         self.__parent: Optional[DirectoryElement] = None
@@ -86,7 +91,8 @@ class FileSystemElement(ABC):
         # @fixme: этот способ определения скрытых файлов платформозависимый
         self.__is_hidden = self.__entry.name.startswith(".")
 
-        self._last_in_dir = False
+        self._last_in_list = False
+        self._immutable = immutable
 
     # region Методы реализующие протокол DirEntryProtocol
 
@@ -118,6 +124,7 @@ class FileSystemElement(ABC):
         raise NotImplementedError
 
     @property
+    # @todo @abstractmethod
     def is_symlink(self) -> bool:
         """Является ли элемент символической ссылкой"""
         return self.__entry.is_symlink()
@@ -140,9 +147,9 @@ class FileSystemElement(ABC):
         return self.__is_hidden
 
     @property
-    def parent(self) -> Optional[DirectoryElement]:
+    def parent(self) -> DirectoryElement:
         """Родительский элемент"""
-        return self.__parent
+        return cast(DirectoryElement, self.__parent)
 
     @parent.setter
     def parent(self, parent: DirectoryElement) -> None:
@@ -153,8 +160,16 @@ class FileSystemElement(ABC):
             logger.debug("Родительский элемент уже установлен!")  # @for_debug
 
     @property
+    def immutable(self):
+        return self._immutable
+
+    @property
     def is_last_in_dir(self):
-        return self._last_in_dir
+        return self._last_in_list
+
+    # @property
+    # def frmt_name(self):
+    #     return
 
     def __repr__(self):
         return f"{self.path}{'/' if self.is_dir else ''}"
@@ -177,11 +192,17 @@ class FileElement(FileSystemElement):
 class DirectoryElement(FileSystemElement):
     """Класс DirectoryElement описывает директорию."""
 
-    def __init__(self, entry: Union[DirEntryProtocol, os.DirEntry], level: int, **config: Dict[str, Any]) -> None:
+    def __init__(
+        self,
+        entry: Union[DirEntryProtocol, os.DirEntry],
+        level: int,
+        immutable: bool = False,
+        **config: Dict[str, Any],
+    ) -> None:
         """
         Инициализирует объект DirectoryElement.
         """
-        super().__init__(entry, level)
+        super().__init__(entry, level, immutable)
 
         # Список директорий в директории. создается и заполняется в `get_content`
         self.__content_directories: Optional[List[DirectoryElement]] = None
@@ -227,6 +248,7 @@ class DirectoryElement(FileSystemElement):
             self.__content_files = []
             # Получает содержимое директории.
             # Заполняет списки файлов (self._content_files) и директорий (self._content_directories).
+            immutable = not os.access(self.path, os.W_OK)
             try:
                 with os.scandir(self.path) as entries:
                     for _entry in entries:
@@ -234,7 +256,7 @@ class DirectoryElement(FileSystemElement):
                             # содержимое корня обрабатывается всегда
                             if _entry.is_dir():
                                 if config["subdirectories"]:  # если задано в config обрабатывать поддиректории
-                                    element_directory = DirectoryElement(_entry, self.level + 1, **config)
+                                    element_directory = DirectoryElement(_entry, self.level + 1, immutable, **config)
                                     if (
                                         config["hidden"] or not element_directory.is_hidden
                                     ):  # если задано в config пропускать скрытые
@@ -243,7 +265,7 @@ class DirectoryElement(FileSystemElement):
                                     else:
                                         del element_directory
                             else:  # _entry.is_file():
-                                element_file = FileElement(_entry, self.level + 1)
+                                element_file = FileElement(_entry, self.level + 1, immutable)
                                 if (
                                     config["hidden"] or not element_file.is_hidden
                                 ):  # если задано в config пропускать скрытые
@@ -256,7 +278,7 @@ class DirectoryElement(FileSystemElement):
 
             if self.__content_files:
                 # @todo: Сортировка файлов.
-                self.__content_files[-1]._last_in_dir = True  # последний файл в списке пометить как "последний"
+                self.__content_files[-1]._last_in_list = True  # последний файл в списке пометить как "последний"
 
             # @todo: Сортировка директорий. if self.__content_directories:
 
@@ -354,16 +376,6 @@ class DirectoryElement(FileSystemElement):
         for directory in self.content_directories:
             yield directory
             yield from directory.__iter__()
-
-    # def __iterate_all_elements(self) -> Generator[Optional[Union[FileElement, DirectoryElement]], None, None]:
-    #     """Генератор для перебора дерева элементов."""
-    #     if self.is_empty:
-    #         yield None
-    #     for file in self.content_files:
-    #         yield file
-    #     for directory in self.content_directories:
-    #         yield directory
-    #         yield from directory.__iterate_all_elements()
 
 
 class RootDirectoryElement(DirectoryElement):
