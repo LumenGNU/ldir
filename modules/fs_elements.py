@@ -74,6 +74,9 @@ class FileSystemElement(ABC):
     Добавляя свойства:
     - `level`: `int` - уровень вложенности элемента (0 - корневой элемент).
     - `is_hidden`: `bool` - является ли элемент скрытым.
+    - `parent`: `DirectoryElement` - родительский элемент.
+    - `immutable`: `bool` - флаг, указывающий, что элемент не может быть изменен (нет прав на запись у родительской директории).
+    - `is_last_in_list`: `bool` - флаг, указывающий, что элемент является последним в списке элементов.
 
     """
 
@@ -124,7 +127,6 @@ class FileSystemElement(ABC):
         raise NotImplementedError
 
     @property
-    # @todo @abstractmethod
     def is_symlink(self) -> bool:
         """Является ли элемент символической ссылкой"""
         return self.__entry.is_symlink()
@@ -164,7 +166,7 @@ class FileSystemElement(ABC):
         return self._immutable
 
     @property
-    def is_last_in_dir(self):
+    def is_last_in_list(self):
         return self._last_in_list
 
     # @property
@@ -197,7 +199,7 @@ class DirectoryElement(FileSystemElement):
         entry: Union[DirEntryProtocol, os.DirEntry],
         level: int,
         immutable: bool = False,
-        **config: Dict[str, Any],
+        **config: Any,
     ) -> None:
         """
         Инициализирует объект DirectoryElement.
@@ -216,7 +218,7 @@ class DirectoryElement(FileSystemElement):
     # @todo: `sort`: `Callable[[FileSystemElement], Any]` - Функция сортировки элементов.
     # @todo: `filter`: `Callable[[FileSystemElement], bool]` - Функция фильтрации элементов.
 
-    def _load_content(self, **config: Dict[str, Any]) -> None:
+    def _load_content(self, **config: Any) -> None:
         """Заполняет списки файлов и директорий `self._content_directories` и `self._content_files` содержимым
         директории.
 
@@ -229,6 +231,9 @@ class DirectoryElement(FileSystemElement):
         Params:
         - `config`: `Config` - Конфигурация обхода директории.
             - `depth`: `int` - Рекурсивный обход поддиректорий. Будет пройдено дерево до указанной глубины.
+                    - N<0 - все директории.
+                    - 0 - только текущая директория.
+                    - 1..N - текущая директория и N уровней поддиректорий.
             - `subdirectories`: `bool` - Учитывать поддиректории. Как минимум поддиректории корня будут содержатся
                в `content_directories`, но будут пусты.
             - `hidden`: `bool` - Учитывать скрытые элементы. Если `False`, то скрытые элементы не будут включены в
@@ -253,7 +258,7 @@ class DirectoryElement(FileSystemElement):
                 with os.scandir(self.path) as entries:
                     for _entry in entries:
                         if (
-                            cast(int, config["depth"]) - self.level
+                            cast(int, config["depth"]) - self.level + 1
                         ) or self.level < 1:  # если задано в config обходить все дерево
                             # содержимое корня обрабатывается всегда
                             if _entry.is_dir():
@@ -313,7 +318,7 @@ class DirectoryElement(FileSystemElement):
         def func(element: Union[FileElement, DirectoryElement]) -> None:
 
             if element.is_file:
-                marker = "└─" if element.is_last_in_dir else "├─"
+                marker = "└─" if element.is_last_in_list else "├─"
                 print(" " * (element.level - 1) + marker + " " + element.name)
 
             if element.is_dir:
