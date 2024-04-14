@@ -100,11 +100,12 @@ class App:
         group_catalog.add_argument(
             "-r",
             "--recursive",
+            nargs="?",
+            const=-1,
+            default=0,
             type=int,
-            default=-1,
-            action="store_true",
-            required=False,
-            help="Флаг, рекурсивно обрабатывать подкаталоги (False).",
+            dest="depth",
+            help="Флаг, рекурсивно обрабатывать подкаталоги (False). Если указано число, то обрабатывать до указанной глубины.",
         )
         group_catalog.add_argument(
             "-d",
@@ -170,3 +171,8 @@ class App:
 
 
 app = App()
+
+if __name__ == "__main__":
+    from pprint import pprint
+
+    pprint(app.cl_params)

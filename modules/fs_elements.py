@@ -228,7 +228,7 @@ class DirectoryElement(FileSystemElement):
 
         Params:
         - `config`: `Config` - Конфигурация обхода директории.
-            - `recursive`: `bool` - Рекурсивный обход поддиректорий. Будет пройдено все дерево.
+            - `depth`: `int` - Рекурсивный обход поддиректорий. Будет пройдено дерево до указанной глубины.
             - `subdirectories`: `bool` - Учитывать поддиректории. Как минимум поддиректории корня будут содержатся
                в `content_directories`, но будут пусты.
             - `hidden`: `bool` - Учитывать скрытые элементы. Если `False`, то скрытые элементы не будут включены в
@@ -252,7 +252,9 @@ class DirectoryElement(FileSystemElement):
             try:
                 with os.scandir(self.path) as entries:
                     for _entry in entries:
-                        if config["recursive"] or self.level < 1:  # если задано в config обходить все дерево
+                        if (
+                            cast(int, config["depth"]) - self.level
+                        ) or self.level < 1:  # если задано в config обходить все дерево
                             # содержимое корня обрабатывается всегда
                             if _entry.is_dir():
                                 if config["subdirectories"]:  # если задано в config обрабатывать поддиректории
@@ -381,7 +383,7 @@ class DirectoryElement(FileSystemElement):
 class RootDirectoryElement(DirectoryElement):
     """Класс RootDirectory описывает корневую директорию."""
 
-    def __init__(self, path: str, recursive: bool, subdirectories: bool, hidden: bool) -> None:
+    def __init__(self, path: str, depth: int, subdirectories: bool, hidden: bool) -> None:
         """
         Инициализирует объект DirectoryElement.
         """
@@ -421,8 +423,8 @@ class RootDirectoryElement(DirectoryElement):
                 return self.__stat
 
         config: Dict[str, Any] = {
-            "recursive": recursive,
-            "subdirectories": True if recursive else subdirectories,
+            "depth": depth,
+            "subdirectories": True if depth else subdirectories,
             "hidden": hidden,
         }
 

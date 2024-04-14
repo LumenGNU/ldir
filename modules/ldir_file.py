@@ -116,7 +116,7 @@ class Entry:
         fields: List[Field] = []
 
         group = ""
-        if element.is_dir and config["recursive"]:
+        if element.is_dir and config["depth"]:
             group = element.path
         else:
             group = element.parent.path if element.parent else "root"
@@ -149,7 +149,7 @@ class LdirData:
         `path` (str): Путь к директории.
         `**config`: Дополнительные параметры
         - обхода дерева:
-            - `recursive`: `bool`
+            - `depth`: `int`
             - `subdirectories`: `bool`
             - `hidden`: `bool`
         """
