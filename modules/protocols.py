@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 import os
-from typing import Callable, Iterator, List, Literal, Optional, Protocol, TypedDict, Union
+from typing import Callable, Final, Iterator, List, Literal, Optional, Protocol, TypeAlias, TypedDict, Union
 
 
 class DirEntryProtocol(Protocol):
@@ -119,16 +119,16 @@ class DirectoryElementProtocol(FSElementProtocol, Protocol):
     def __iter__(self) -> Iterator[Optional[Union[FileElementProtocol, DirectoryElementProtocol]]]: ...
 
 
-class Configs(TypedDict):
+VALID_SORT_OPTIONS: Final = ["none", "name", "iname", "type", "mime"]
+SortTypeLiteral: TypeAlias = Literal["none", "name", "iname", "type", "mime"]
 
+
+class Configs(TypedDict):
     depth: int
     subdirectories: bool
     hidden: bool
-    # sort: Literal[
-    #     "name",
-    #     "type",
-    #     "mime",
-    # ]
+    sort: SortTypeLiteral
+    filters: List[str]
 
 
 if __name__ == "__main__":

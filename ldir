@@ -19,6 +19,8 @@ from modules.app import app
 def main() -> None:
     """точка входа"""
 
+    print(app.cl_params)
+
 
 if __name__ == "__main__":
     main()

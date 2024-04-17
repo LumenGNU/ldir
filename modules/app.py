@@ -4,8 +4,10 @@
 """
 
 import os
-import shutil
 import argparse
+import shutil
+from typing import List
+from modules.protocols import VALID_SORT_OPTIONS
 
 
 class App:
@@ -125,11 +127,45 @@ class App:
 
         # endregion
 
+        # region group_sorting
+        group_sorting = parser.add_argument_group("Сортировка")
+        group_sorting.add_argument(
+            "-s",
+            "--sort",
+            nargs="?",
+            required=False,
+            default="none",
+            choices=VALID_SORT_OPTIONS,
+            type=str,
+            help="Параметр сортировки (none): "
+            "none: не сортировать; "
+            "name: по имени; "
+            "iname: по имени без учета регистра; "
+            "type: по расширению; "
+            "mime: по типу mime.",
+        )
+
+        # endregion
+
+        # region group_filter
+        group_filter = parser.add_argument_group("Фильтры")
+        group_filter.add_argument(
+            "-f",
+            "--filters",
+            nargs="+",
+            required=False,
+            default=["*"],
+            type=str,
+            help="----",
+        )
+
+        # endregion
+
         # Парсим аргументы
         _cl_params = parser.parse_args()
 
         # проверки
-        if _cl_params.depth > 0:
+        if _cl_params.depth != 0:  #
             _cl_params.directory = True
 
         # путь self._cl_params.directory_path -- должен существовать и быть директорией
@@ -176,6 +212,4 @@ class App:
 app = App()
 
 if __name__ == "__main__":
-    from pprint import pprint
-
-    pprint(app.cl_params)
+    pass
