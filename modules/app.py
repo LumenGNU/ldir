@@ -129,6 +129,8 @@ class App:
         _cl_params = parser.parse_args()
 
         # проверки
+        if _cl_params.depth > 0:
+            _cl_params.directory = True
 
         # путь self._cl_params.directory_path -- должен существовать и быть директорией
         if not os.path.isdir(_cl_params.directory_path):
