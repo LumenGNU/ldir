@@ -5,9 +5,9 @@ __file__ = ldir_file.py
 
 from __future__ import annotations
 import os
-from typing import Any, Dict, Generator, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, Final, Generator, Iterator, List, Optional, Tuple, Union
 
-from modules.fs_elements import DirEntryProtocol
+from .fs_elements import DirEntryProtocol
 
 from .fs_elements import (
     DirEntryProtocol,
@@ -33,12 +33,12 @@ class Field:
         self.__text: SString
 
         if self.index == 0:  # marker
-            self.__text = SString(f"{self.__value}:", group="marker")
+            self.__text = SString(f"{self.__value}:", self.__group)
         elif self.index == 1:  # name
             self.__text = SString(f"{'  ' * self.__level}{self.__value}", f"{self.__index}{self.__group}")
         elif self.index == 2:  # extra_field1
             self.__text = SString(f"| {self.__value}", f"{self.__index}{self.__group}")
-        else:
+        else:  # extra_fieldN
             self.__text = SString(f"; {self.__value}", f"{self.__index}{self.__group}")
 
     @property
@@ -53,6 +53,11 @@ class Field:
     def value(self) -> str:
         """Возвращает значение поля."""
         return self.__value
+
+    @property
+    def level(self) -> int:
+        """Возвращает уровень вложенности."""
+        return self.__level
 
     def __str__(self) -> SString:
         """Возвращает строковое представление объекта."""
@@ -117,21 +122,25 @@ class Entry:
 
         group = ""
         if element.is_dir and config["depth"]:
-            group = element.path
+            if element.is_empty:
+                group = element.parent.path
+            else:
+                group = element.path
         else:
             group = element.parent.path if element.parent else "root"
 
         index = -1
         # первые два обязательных поля
         # <marker>
-
         marker = "#" if element.immutable else str(element.inode)
-        fields.append(Field(index := index + 1, marker, group=group))
+        fields.append(Field(index := index + 1, marker, group="marker"))
         # <name>
         frmt_name: str = f"['{element.name}']" if element.is_dir else f"'{element.name}'"
         fields.append(Field(index := index + 1, frmt_name, level=element.level, group=group))
 
         # # @for_debug: for test
+        # fields.append(Field(index := index + 1, str(element.level), group=group))
+        # fields.append(Field(index := index + 1, group, group=group))
         # fields.append(Field(index := index + 1, "<extra1>", group=group))
         # fields.append(Field(index := index + 1, "<extra2>", group=group))
 
@@ -200,14 +209,16 @@ class LdirData:
         """
         out = ""
         last_e = True
+        last_l = -1
         for entry in self:
             # out += f"{entry.group} "
-            if entry.is_dir():
-                if last_e:
+            if entry.is_dir():  # прижимать между собой пустые директории одного уровня
+                if last_e or last_l != entry[1].level:
                     out += "\n"
                 last_e = False
             else:
                 last_e = True
+            last_l = entry[1].level
             out += str(entry).rstrip() + "\n"
         return out
 
