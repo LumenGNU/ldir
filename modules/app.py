@@ -6,7 +6,6 @@
 import os
 import argparse
 import shutil
-from typing import List
 from modules.protocols import VALID_SORT_OPTIONS
 
 
@@ -138,11 +137,11 @@ class App:
             choices=VALID_SORT_OPTIONS,
             type=str,
             help="Параметр сортировки (none): "
-            "none: не сортировать; "
-            "name: по имени; "
-            "iname: по имени без учета регистра; "
-            "type: по расширению; "
-            "mime: по типу mime.",
+            "none - не сортировать; "
+            "name - по имени; "
+            "iname - по имени без учета регистра; "
+            "type - по расширению; "
+            "mime - по типу mime.",
         )
 
         # endregion
@@ -156,7 +155,8 @@ class App:
             required=False,
             default=["*"],
             type=str,
-            help="----",
+            help="Один или больше глоб-паттернов для фильтрации файлов. По умолчанию '*' - все файлы. "
+            "Фильтры применяются только к файлам.",
         )
 
         # endregion

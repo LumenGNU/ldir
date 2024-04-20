@@ -2,9 +2,7 @@
 """"""
 
 from __future__ import annotations
-from operator import attrgetter
-import os
-from typing import Any, Literal, Never, Optional, Tuple, Union
+from typing import Any, Never, Optional, Tuple
 import magic
 
 from modules.protocols import SortTypeLiteral
@@ -16,7 +14,8 @@ def sort_method(method: SortTypeLiteral) -> Any:
     return globals()[f"sort_{method}_method"]
 
 
-def sort_none_method(element: Any) -> bool:
+# pylint: disable=unused-argument
+def sort_none_method(element: Never) -> bool:
     return False
 
 
@@ -43,12 +42,12 @@ def sort_mime_method(element: Any) -> Tuple[str, str]:
     """Сортирует элементы по MIME"""
     # Файлы без MIME возвращают ("\0", имя), что поместит их выше файлов с MIME
     # Создаём объект Magic
-    global magic_obj
+
+    global magic_obj  # pylint: disable=global-statement
     if magic_obj is None:
         magic_obj = magic.Magic(mime=True)
     # Определяем тип файла
-    file_type = magic_obj.from_file(getattr(element, "path"))
-    return file_type, getattr(element, "name", "_").lower()
+    return magic_obj.from_file(getattr(element, "path")), getattr(element, "name", "_").lower()
 
 
 if __name__ == "__main__":

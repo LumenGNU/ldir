@@ -42,7 +42,7 @@ from modules.protocols import (
 from modules.logger import get_logger
 from modules.sort import sort_method
 
-logger = get_logger(__name__)
+LOGGER: Final = get_logger(__name__)
 
 
 class FileSystemElement(ABC, FSElementProtocol):
@@ -70,8 +70,8 @@ class FileSystemElement(ABC, FSElementProtocol):
         parent: DirectoryElement,
     ) -> None:  # Инициализация
         # Элемент ФС
-        self.__entry = entry
-        self.__parent = parent
+        self.__entry: Final = entry
+        self.__parent: Final = parent
 
         self._last_in_list = False
 
@@ -173,9 +173,9 @@ class DirectoryElement(FileSystemElement, DirectoryElementProtocol):
         super().__init__(entry, parent)
 
         # Список директорий в директории. создается и заполняется в `get_content`
-        self.__content_directories: List[DirectoryElement] = []
+        self.__content_directories: Final[List[DirectoryElement]] = []
         # Список файлов в директории. создается и заполняется в `get_content`
-        self.__content_files: List[FileElement] = []
+        self.__content_files: Final[List[FileElement]] = []
 
         self._load_content(config)
 
@@ -184,7 +184,7 @@ class DirectoryElement(FileSystemElement, DirectoryElementProtocol):
         """Заполняет списки файлов и директорий `self._content_directories` и `self._content_files` содержимым
         директории.
 
-        Будет обойдено дерево файловой системы начиная с текущей директории с учетом параметров конфигурации, и
+        Будет обойдено дерево файловой системы начиная с текущей директории с учетом параметров обхода, и
         заполнены списки файлов и директорий объектами `FileSystemElement`.
 
         Состояние фс будет "заморожено" на момент обхода, т.е. изменения в файловой системе после вызова метода

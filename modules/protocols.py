@@ -120,7 +120,7 @@ class DirectoryElementProtocol(FSElementProtocol, Protocol):
 
 
 VALID_SORT_OPTIONS: Final = ["none", "name", "iname", "type", "mime"]
-SortTypeLiteral: TypeAlias = Literal["none", "name", "iname", "type", "mime"]
+SortTypeLiteral: TypeAlias = Literal[*VALID_SORT_OPTIONS]
 
 
 class Configs(TypedDict):
