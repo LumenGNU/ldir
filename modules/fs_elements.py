@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """
 __file__ = "fs_elements.py"
-Модуль `fs_elements` содержит реализацию классов для работы с элементами файловой системы.
+
+
+Модуль fs_elements содержит реализацию классов для работы с элементами файловой системы.
 
 Основные классы:
 
-- `DirEntryProtocol` - интерфейс для работы с объектами, аналогичными `os.DirEntry`.
-- `FileSystemElement` - абстрактный класс, описывающий элемент файловой системы, производный от `DirEntryProtocol`.
-- `FileElement` и `DirectoryElement` - конкретные реализации для работы с файлами и директориями.
-- `RootDirectoryElement` - класс, представляющий корневую директорию.
+- FileSystemElement - абстрактный класс, описывающий элемент файловой системы, производный от DirEntryProtocol.
+- FileElement и DirectoryElement - конкретные реализации для работы с файлами и директориями.
+- RootDirectoryElement - класс, представляющий корневую директорию.
 
 Эти классы позволяют получить информацию о файлах и директориях, а также обойти файловую систему
  и вывести ее содержимое в виде дерева.
 
-Модуль `fs_elements` предназначен для представления и взаимодействия с элементами
+Модуль fs_elements предназначен для представления и взаимодействия с элементами
 файловой системы. Он содержит классы, моделирующие файлы и директории, и
 предоставляет методы для получения информации о них, такие как имя, путь и тип.
 
@@ -25,89 +26,81 @@ __file__ = "fs_elements.py"
 """
 
 from __future__ import annotations
-from typing import Final, Iterator, List, Optional, Union, Callable, cast
-from abc import ABC
+from typing import Final, Iterator, Callable, cast
+from abc import ABC, abstractmethod
 import os
 import sys
 from fnmatch import fnmatch
 
 from modules.protocols import (
-    DirEntryProtocol,
-    FSElementProtocol,
-    FileElementProtocol,
-    DirectoryElementProtocol,
     Configs,
     SortTypeLiteral,
 )
 from modules.logger import get_logger
-from modules.sort import sort_method
+from modules.sort import sort_to
 
 LOGGER: Final = get_logger(__name__)
 
 
-class FileSystemElement(ABC, FSElementProtocol):
-    """Абстрактный класс описывающий элемент ФС производный от `DirEntryProtocol`.
+class FileSystemElement(ABC):
+    """Абстрактный класс описывающий элемент ФС производный от DirEntryProtocol.
 
-    Расширяет интерфейс `DirEntryProtocol`
-    Переопределяет методы как свойства:
-    - `is_dir`
-    - `is_file`
-    - `is_symlink`
-    - `stat`
-    Добавляя свойства:
-    - `level: int` - уровень вложенности элемента (0 - корневой элемент).
-    - `is_hidden: bool` - является ли элемент скрытым.
-    - `parent: DirectoryElement` - родительский элемент.
-    - `immutable: bool` - флаг, указывающий, что элемент не может быть изменен (нет прав на запись
+    Свойства:
+    - name: str
+    - path: str
+    - is_dir
+    - is_file
+    - is_symlink
+    - level: int - уровень вложенности элемента (0 - корневой элемент).
+    - is_hidden: bool - является ли элемент скрытым.
+    - parent: DirectoryElement - родительский элемент.
+    - is_immutable: bool - флаг, указывающий, что элемент не может быть изменен (нет прав на запись
        у родительской директории).
-    - `is_last_in_list: bool` - флаг, указывающий, что элемент является последним в списке элементов.
+    - is_last_in_list: bool - флаг, указывающий, что элемент является последним в списке элементов.
 
     """
 
-    def __init__(
-        self,
-        entry: DirEntryProtocol,
-        parent: DirectoryElement,
-    ) -> None:  # Инициализация
+    def __init__(self, name: str, path: str, parent: DirectoryElement) -> None:
+        """Инициализация
+
+        Params:
+        - name: str - имя элемента.
+        - path: str - путь к элементу.
+        - parent: DirectoryElement - родительский элемент.
+        """
         # Элемент ФС
-        self.__entry: Final = entry
+        self.__name: Final = name
+        self.__path: Final = path
         self.__parent: Final = parent
 
         self._last_in_list = False
 
-    # region Методы реализующие протокол DirEntryProtocol
-
     @property
     def name(self) -> str:
         """Имя элемента"""
-        return self.__entry.name
+        return self.__name
 
     @property
     def path(self) -> str:
         """Путь к элементу"""
-        return self.__entry.path
+        return self.__path
 
-    def inode(self) -> int:
-        """Индексный дескриптор элемента"""
-        return self.__entry.inode()
-
-    def is_dir(self, *, follow_symlinks: bool = True) -> bool:
+    @property
+    @abstractmethod
+    def is_dir(self) -> bool:
         """Является ли элемент директорией"""
-        return self.__entry.is_dir(follow_symlinks=follow_symlinks)
+        raise NotImplementedError
 
-    def is_file(self, *, follow_symlinks: bool = True) -> bool:
+    @property
+    @abstractmethod
+    def is_file(self) -> bool:
         """Является ли элемент файлом"""
-        return self.__entry.is_file(follow_symlinks=follow_symlinks)
+        raise NotImplementedError
 
+    @property
     def is_symlink(self) -> bool:
         """Является ли элемент символической ссылкой"""
-        return self.__entry.is_symlink()
-
-    def stat(self, *, follow_symlinks: bool = True) -> os.stat_result:
-        """Возвращает информацию о файле (`os.stat()`)"""
-        return self.__entry.stat(follow_symlinks=follow_symlinks)
-
-    # endregion
+        return os.path.islink(self.path)
 
     @property
     def level(self) -> int:
@@ -125,16 +118,17 @@ class FileSystemElement(ABC, FSElementProtocol):
         return self.__parent
 
     @property
-    def immutable(self):
+    def is_immutable(self):
         """Флаг, указывающий, что элемент не может быть изменен (нет прав на запись у родительской директории)"""
         return not self.parent.is_writable
 
     @property
     def is_last_in_list(self):
+        """Флаг, указывающий, что элемент является последним в списке элементов."""
         return self._last_in_list
 
     def __repr__(self):
-        return f"{self.path}{os.path.sep if self.is_dir() else ''}"
+        return f"{self.path}{os.path.sep if self.is_dir else ''}"
 
     @staticmethod
     def check_is_hidden(name: str) -> bool:
@@ -143,14 +137,26 @@ class FileSystemElement(ABC, FSElementProtocol):
         return name.startswith(".") or name.endswith("~")
 
 
-class FileElement(FileSystemElement, FileElementProtocol):
+class FileElement(FileSystemElement):
     """Класс FileElement описывает файл."""
 
-    def __init__(self, entry: DirEntryProtocol, parent: DirectoryElement) -> None:
-        super().__init__(entry, parent)
+    def __init__(self, name: str, path: str, parent: DirectoryElement) -> None:
+        super().__init__(name, path, parent)
 
-        # @todo: корректно обрабатывать файлы с двойными расширениями. ( `example.tar.gz` )
-        self.__name_without_ext, self.__extension = os.path.splitext(entry.name)
+        self.__name_without_ext: Final
+        self.__extension: Final
+        # @todo: корректно обрабатывать файлы с двойными расширениями. ( example.tar.gz )
+        self.__name_without_ext, self.__extension = os.path.splitext(self.name)
+
+    @property
+    def is_dir(self) -> bool:
+        """Является ли элемент директорией"""
+        return False
+
+    @property
+    def is_file(self) -> bool:
+        """Является ли элемент файлом"""
+        return True
 
     @property
     def extension(self) -> str:
@@ -163,75 +169,76 @@ class FileElement(FileSystemElement, FileElementProtocol):
         return self.__name_without_ext
 
 
-class DirectoryElement(FileSystemElement, DirectoryElementProtocol):
+class DirectoryElement(FileSystemElement):
     """Класс DirectoryElement описывает директорию."""
 
-    def __init__(self, entry: DirEntryProtocol, parent: DirectoryElement, config: Configs) -> None:
+    def __init__(self, name: str, path: str, parent: DirectoryElement, config: Configs) -> None:
         """
         Инициализирует объект DirectoryElement.
         """
-        super().__init__(entry, parent)
+        super().__init__(name, path, parent)
 
-        # Список директорий в директории. создается и заполняется в `get_content`
-        self.__content_directories: Final[List[DirectoryElement]] = []
-        # Список файлов в директории. создается и заполняется в `get_content`
-        self.__content_files: Final[List[FileElement]] = []
+        # Список директорий в директории. создается и заполняется в get_content
+        self.__content_directories: Final[list[DirectoryElement]] = []
+        # Список файлов в директории. создается и заполняется в get_content
+        self.__content_files: Final[list[FileElement]] = []
 
         self._load_content(config)
 
     # @todo: Подозреваю, это можно распараллеливать.
     def _load_content(self, config: Configs) -> None:
-        """Заполняет списки файлов и директорий `self._content_directories` и `self._content_files` содержимым
+        """Заполняет списки файлов и директорий self._content_directories и self._content_files содержимым
         директории.
 
         Будет обойдено дерево файловой системы начиная с текущей директории с учетом параметров обхода, и
-        заполнены списки файлов и директорий объектами `FileSystemElement`.
+        заполнены списки файлов и директорий объектами FileSystemElement.
 
         Состояние фс будет "заморожено" на момент обхода, т.е. изменения в файловой системе после вызова метода
         не будут учтены.
 
         Params:
-        - `config: Config` - Конфигурация обхода директории.
-            - `depth: int` - Рекурсивный обход поддиректорий. Будет пройдено дерево до указанной глубины.
+        - config: Config - Конфигурация обхода директории.
+            - depth: int - Рекурсивный обход поддиректорий. Будет пройдено дерево до указанной глубины.
                     - N<0 - все директории.
                     - 0 - только текущая директория.
                     - 1..N - текущая директория и N уровней поддиректорий.
-            - `subdirectories: bool` - Учитывать поддиректории. Как минимум поддиректории корня будут содержатся
-                                в `content_directories`, но будут пусты.
-            - `hidden: bool` - Учитывать скрытые элементы. Если `False`, то скрытые элементы не будут включены в
-                               `content_directories` и `content_files`.
-            - `sort: str` -
-            - `filters: List[str]` -
-            # @todo:
-            - `follow_symlinks: bool` - Следовать ли по символическим ссылкам.
+            - subdirectories: bool - Учитывать поддиректории. Как минимум поддиректории корня будут содержатся
+                                в content_directories, но будут пусты.
+            - hidden: bool - Учитывать скрытые элементы. Если False, то скрытые элементы не будут включены в
+                               content_directories и content_files.
+            - sort: SortTypeLiteral - метод сортировки элементов. При любом значении, кроме "none" директории всегда
+                                        сортируются по имени.
+            - filters: list[str] - Список фильтров (globing) для файлов. Файлы, имена которых соответствуют хотя
+                                     бы одному фильтру, будут включены в content_files.
 
         Замечания:
 
-        Должен быть вызван в конструкторе объекта `DirectoryElement` перед обращением
-        к `self.content_directories` и `self.content_files`.
+        Должен быть вызван в конструкторе объекта DirectoryElement перед обращением
+        к self.content_directories и self.content_files.
         """
 
         # Получает содержимое директории.
         # Заполняет списки файлов (self._content_files) и директорий (self._content_directories).
 
         try:
-            with os.scandir(self.path) as entries:
-                for _entry in entries:
-                    if (
-                        config["depth"] - self.level + 1
-                    ) or self.level < 1:  # если задано в config обходить не все дерево
-                        # содержимое корня обрабатывается всегда
+            for entry_name in os.listdir(self.path):
+                if self.level < 1 or (  # если текущий уровень меньше 1 (корень)
+                    config["depth"] - self.level + 1
+                ):  # или если задано в config обходить не все дерево
 
-                        if not config["hidden"] and FileElement.check_is_hidden(_entry.name):
-                            continue  # если задано в configs пропускать скрытые элементы
+                    if not config["hidden"] and FileElement.check_is_hidden(entry_name):
+                        continue  # если задано в configs пропускать скрытые элементы
 
-                        if _entry.is_dir():
-                            if config["subdirectories"]:  # если задано в config обрабатывать поддиректории
-                                self.__content_directories.append(DirectoryElement(_entry, self, config))
+                    entry_path: Final = os.path.join(self.path, entry_name)
 
-                        else:  # _entry.is_file():
-                            if any(fnmatch(_entry.name, pattern) for pattern in config["filters"]):
-                                self.__content_files.append(FileElement(_entry, self))
+                    if os.path.isdir(entry_path):  # если это директория
+                        if config["subdirectories"]:
+                            self.__content_directories.append(DirectoryElement(entry_name, entry_path, self, config))
+
+                    else:  # если это файл
+                        # применяет фильтры
+                        if any(fnmatch(entry_name, pattern) for pattern in config["filters"]):
+                            self.__content_files.append(FileElement(entry_name, entry_path, self))
 
         except PermissionError:
             print(f"Нет доступа к директории: {self.path}", file=sys.stderr)
@@ -239,44 +246,55 @@ class DirectoryElement(FileSystemElement, DirectoryElementProtocol):
             print(f"Ошибка: {self.path}.", e, file=sys.stderr)
 
         if self.__content_files:
-            # Сортировка файлов.
-            self.__content_files.sort(key=sort_method(config["sort"]))
+            # Сортирует файлы.
+            self.__content_files.sort(key=sort_to(config["sort"]))
         if self.__content_directories:
-            # Сортировка директорий.
+            # Сортирует директории.
             if config["sort"] != "none":  # директории всегда сортируются по имени
-                self.__content_directories.sort(key=sort_method("iname"))
+                self.__content_directories.sort(key=sort_to("iname"))
 
         self._mark_last()  # последний файл в списке пометить как "последний"
 
     @property
+    def is_dir(self) -> bool:
+        """Является ли элемент директорией"""
+        return True
+
+    @property
+    def is_file(self) -> bool:
+        """Является ли элемент файлом"""
+        return False
+
+    @property
     def is_empty(self) -> bool:
-        """Проверяет, что директория "пуста". Т.е. `content_files` и `content_directories` не содержат элементов."""
+        """Проверяет, что директория "пуста". Т.е. content_files и content_directories не содержат элементов."""
         return not self.content_files and not self.content_directories
 
     @property
     def is_writable(self) -> bool:
+        """Проверяет, доступна ли директория для записи."""
         return os.access(self.path, os.W_OK)
 
     @property
-    def content_directories(self) -> List[DirectoryElement]:
+    def content_directories(self) -> list[DirectoryElement]:
         """Список поддиректорий в директории."""
         return self.__content_directories
 
     @property
-    def content_files(self) -> List[FileElement]:
+    def content_files(self) -> list[FileElement]:
         """Список файлов в директории."""
         return self.__content_files
 
     def print_content(self):
         """Печатает содержимое директории в виде дерева."""
 
-        def func(element: Union[FileElement, DirectoryElement]) -> None:
+        def func(element: FileElement | DirectoryElement) -> None:
 
-            if element.is_file():
+            if element.is_file:
                 marker = "└─" if element.is_last_in_list else "├─"
                 print(" " * (element.level - 1) + marker + " " + element.name)
 
-            if element.is_dir():
+            if element.is_dir:
                 print(" " * (element.level) + "* " + element.name)
                 if cast(DirectoryElement, element).is_empty:
                     # печатать сообщение "пусто" для пустых папок
@@ -285,13 +303,12 @@ class DirectoryElement(FileSystemElement, DirectoryElementProtocol):
         func(self)
         self.apply_to_each(func)
 
-    def apply_to_each(self, func: Callable[[Union[FileElement, DirectoryElement]], None]) -> None:
+    def apply_to_each(self, func: Callable[[FileElement | DirectoryElement], None]) -> None:
         """Применяет функцию к каждому элементу в дереве. Начиная обход от текущей директории.
 
-        Функция `func` будет вызвана для каждого под-элемента, но не для самого элемента.
+        Функция func будет вызвана для каждого под-элемента, но не для самого элемента.
         Это значит что следующий код не напечатает имя корневой директории:
-
-            ```python
+            ```
             root = RootDirectory("path/to/root", ...)
             root.apply_to_each(lambda element: print(element.name))
             ```
@@ -303,14 +320,14 @@ class DirectoryElement(FileSystemElement, DirectoryElementProtocol):
             dir1
             dir2
             ```
-            Имя корневой директории `root` не напечатано!
+            Имя корневой директории root не напечатано!
 
         Функция будет вызвана сначала для всех файлов в корне, потом для первой поддиректории и, затем,
         ко всем ее файлам и т.д. Потом для второй поддиректории и, затем, ко всем ее файлам и т.д. И т.д.
 
 
         Params:
-        - `func: Callable[[Union[FileElement, DirectoryElement]], None]` - функция, которая будет применена к
+        - func: (FileElement | DirectoryElement) -> None - функция, которая будет применена к
                    каждому элементу.
 
         """
@@ -325,7 +342,7 @@ class DirectoryElement(FileSystemElement, DirectoryElementProtocol):
             func(directory)
             directory.apply_to_each(func)
 
-    def __iter__(self) -> Iterator[Optional[Union[FileElement, DirectoryElement]]]:
+    def __iter__(self) -> Iterator[FileElement | DirectoryElement | None]:
         """Возвращает итератор, который перебирает все элементы в дереве, начиная с текущей директории."""
         if self.is_empty:
             yield None
@@ -336,15 +353,14 @@ class DirectoryElement(FileSystemElement, DirectoryElementProtocol):
             yield from directory.__iter__()
 
     def _mark_last(self):
-        # pylint: disable=W0212
+
         if self.content_files:
-            self.content_files[-1]._last_in_list = True
+            self.content_files[-1]._last_in_list = True  # pylint: disable=protected-access
         if self.content_directories:
-            self.content_directories[-1]._last_in_list = True
-        # pylint: enable=W0212
+            self.content_directories[-1]._last_in_list = True  # pylint: disable=protected-access
 
 
-class RootDirectoryElement(DirectoryElement, DirectoryElementProtocol):
+class RootDirectoryElement(DirectoryElement):
     """Класс RootDirectory описывает корневую директорию."""
 
     def __init__(
@@ -354,40 +370,28 @@ class RootDirectoryElement(DirectoryElement, DirectoryElementProtocol):
         subdirectories: bool,
         hidden: bool,
         sort: SortTypeLiteral,
-        filters: List[str],
+        filters: list[str],
     ) -> None:
         """
-        Инициализирует объект DirectoryElement.
+        Инициализирует объект RootDirectoryElement.
+
+        Params:
+            - path: str - путь к директории. Путь должен существовать и быть директорией. Путь будет нормализован и
+                            преобразован в абсолютный путь.
+            - Конфигурация обхода:
+            - depth: int - глубина обхода директории. Если depth < 0, то будет обойдено все дерево.
+                            Если depth == 0, то обход будет только в текущей директории.
+                            Если depth > 0, то обход будет до указанной глубины.
+            - subdirectories: bool - учитывать поддиректории.
+            - hidden: bool - учитывать скрытые элементы.
+            - sort: SortTypeLiteral - метод сортировки элементов. При любом значении, кроме "none" директории всегда
+                                        сортируются по имени.
+            - filters: list[str] - список фильтров (globing) для файлов.
         """
-
-        class DirEntry(DirEntryProtocol):
-            """Вспомогательный класс, реализация протокола DirEntryProtocol"""
-
-            def __init__(self, path: str):
-                self.__path: Final[str] = path
-
-            @property
-            def name(self) -> str:
-                return os.path.basename(self.__path)
-
-            @property
-            def path(self) -> str:
-                return self.__path
-
-            def inode(self) -> int:
-                return self.stat().st_ino
-
-            def is_dir(self, *, follow_symlinks: bool = True) -> bool:  # @todo
-                return os.path.isdir(self.__path)
-
-            def is_file(self, *, follow_symlinks: bool = True) -> bool:  # @todo
-                return os.path.isfile(self.path)
-
-            def is_symlink(self) -> bool:
-                return os.path.islink(self.__path)
-
-            def stat(self, *, follow_symlinks: bool = True) -> os.stat_result:  # @todo
-                return os.stat(self.__path, follow_symlinks=follow_symlinks)
+        if not os.path.isdir(path):
+            raise FileNotFoundError(f"Директория не найдена: {path}")
+        _path: Final = os.path.abspath(os.path.normpath(os.path.expanduser(path)))
+        _name: Final = os.path.basename(_path)
 
         configs: Final[Configs] = {
             "depth": depth,
@@ -398,7 +402,7 @@ class RootDirectoryElement(DirectoryElement, DirectoryElementProtocol):
         }
 
         # инициализация базового класса
-        super().__init__(DirEntry(os.path.abspath(os.path.normpath(os.path.expanduser(path)))), self, configs)
+        super().__init__(_name, _path, self, configs)
 
     @property
     def level(self):

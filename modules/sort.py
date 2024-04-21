@@ -10,12 +10,14 @@ from modules.protocols import SortTypeLiteral
 magic_obj: Optional[magic.Magic] = None
 
 
-def sort_method(method: SortTypeLiteral) -> Any:
+def sort_to(method: SortTypeLiteral) -> Any:
+    """Сортировка элементов по указанному методу."""
     return globals()[f"sort_{method}_method"]
 
 
 # pylint: disable=unused-argument
 def sort_none_method(element: Never) -> bool:
+    """Не сортировать элементы."""
     return False
 
 
@@ -39,9 +41,7 @@ def sort_type_method(element: Any) -> Tuple[str, str]:
 
 
 def sort_mime_method(element: Any) -> Tuple[str, str]:
-    """Сортирует элементы по MIME"""
-    # Файлы без MIME возвращают ("\0", имя), что поместит их выше файлов с MIME
-    # Создаём объект Magic
+    """Сортирует элементы по MIME. Элемент должен иметь атрибут `path`."""
 
     global magic_obj  # pylint: disable=global-statement
     if magic_obj is None:
