@@ -32,6 +32,7 @@ import os
 import sys
 from fnmatch import fnmatch
 
+from modules.contracts import contract, has_valid_dir_path
 from modules.protocols import (
     Configs,
     SortTypeLiteral,
@@ -363,43 +364,28 @@ class DirectoryElement(FileSystemElement):
 class RootDirectoryElement(DirectoryElement):
     """Класс RootDirectory описывает корневую директорию."""
 
-    def __init__(
-        self,
-        path: str,
-        depth: int,
-        subdirectories: bool,
-        hidden: bool,
-        sort: SortTypeLiteral,
-        filters: list[str],
-    ) -> None:
+    @contract(has_valid_dir_path)
+    def __init__(self, path: str, configs: Configs, /) -> None:
         """
         Инициализирует объект RootDirectoryElement.
 
         Params:
             - path: str - путь к директории. Путь должен существовать и быть директорией. Путь будет нормализован и
                             преобразован в абсолютный путь.
-            - Конфигурация обхода:
-            - depth: int - глубина обхода директории. Если depth < 0, то будет обойдено все дерево.
-                            Если depth == 0, то обход будет только в текущей директории.
-                            Если depth > 0, то обход будет до указанной глубины.
-            - subdirectories: bool - учитывать поддиректории.
-            - hidden: bool - учитывать скрытые элементы.
-            - sort: SortTypeLiteral - метод сортировки элементов. При любом значении, кроме "none" директории всегда
-                                        сортируются по имени.
-            - filters: list[str] - список фильтров (globing) для файлов.
+            - configs - Конфигурация обхода:
+                - depth: int - глубина обхода директории. Если depth < 0, то будет обойдено все дерево.
+                                Если depth == 0, то обход будет только в текущей директории.
+                                Если depth > 0, то обход будет до указанной глубины.
+                - subdirectories: bool - учитывать поддиректории.
+                - hidden: bool - учитывать скрытые элементы.
+                - sort: SortTypeLiteral - метод сортировки элементов. При любом значении, кроме "none" директории всегда
+                                            сортируются по имени.
+                - filters: list[str] - список фильтров (globing) для файлов.
         """
         if not os.path.isdir(path):
             raise FileNotFoundError(f"Директория не найдена: {path}")
         _path: Final = os.path.abspath(os.path.normpath(os.path.expanduser(path)))
         _name: Final = os.path.basename(_path)
-
-        configs: Final[Configs] = {
-            "depth": depth,
-            "subdirectories": subdirectories,
-            "hidden": hidden,
-            "sort": sort,
-            "filters": filters,
-        }
 
         # инициализация базового класса
         super().__init__(_name, _path, self, configs)

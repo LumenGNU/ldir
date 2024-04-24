@@ -7,17 +7,14 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, Final, Generator, Iterator, List, Optional, Tuple, Union
 
-from .fs_elements import DirEntryProtocol
 
-from .fs_elements import (
-    DirEntryProtocol,
+from modules.fs_elements import (
     RootDirectoryElement,
     FileElement,
     DirectoryElement,
-    FileSystemElement,
 )
 
-from .sstring import SString
+from .GroupedString import GroupedString
 
 
 class Field:
@@ -25,21 +22,21 @@ class Field:
 
     def __init__(self, index: int, value: str, level: int = 0, group="default") -> None:
         """Инициализирует объект Field."""
-        self.__value = value
-        self.__index = index
-        self.__level = level
-        self.__group = group
+        self.__value: Final = value
+        self.__index: Final = index
+        self.__level: Final = level
+        self.__group: Final = group
 
-        self.__text: SString
+        self.__text: GroupedString
 
         if self.index == 0:  # marker
-            self.__text = SString(f"{self.__value}:", self.__group)
+            self.__text = GroupedString(f"{self.value}:", "marker")
         elif self.index == 1:  # name
-            self.__text = SString(f"{'  ' * self.__level}{self.__value}", f"{self.__index}{self.__group}")
+            self.__text = GroupedString(f"{'  ' * self.level}{self.__value}", f"{self.index}{self.group}")
         elif self.index == 2:  # extra_field1
-            self.__text = SString(f"| {self.__value}", f"{self.__index}{self.__group}")
+            self.__text = GroupedString(f"| {self.value}", f"{self.index}{self.group}")
         else:  # extra_fieldN
-            self.__text = SString(f"; {self.__value}", f"{self.__index}{self.__group}")
+            self.__text = GroupedString(f"; {self.value}", f"{self.index}{self.group}")
 
     @property
     def index(self):
@@ -48,6 +45,10 @@ class Field:
     @property
     def text(self):
         return self.__text
+
+    @property
+    def group(self):
+        return self.__group
 
     @property
     def value(self) -> str:
@@ -59,28 +60,32 @@ class Field:
         """Возвращает уровень вложенности."""
         return self.__level
 
-    def __str__(self) -> SString:
+    def __str__(self) -> GroupedString:
         """Возвращает строковое представление объекта."""
         return self.text
 
 
 class Entry:
-    """Представляет собой одну строку в файле. Состоит из полей Field.
+    """Представляет собой одну строку в файле и состоит из полей Field. Каждая такая строка
+    ассоциирована с объектом FileElement или DirectoryElement.
 
     Строка в файле имеет следующий формат:
+
+    ```
     <marker>: <name> [| <extra_field1> [; <extra_field2>] ...]
+    ```
     """
 
-    def __init__(self, is_dir: bool, group: str, fields: List[Field]) -> None:
+    def __init__(self, element: FileElement | DirectoryElement) -> None:
         """Инициализирует объект Entry."""
-        self.__fields = fields
-        self.__is_file = not is_dir
-        self.__is_dir = is_dir
-        self.__group = group
 
-    def __iter__(self) -> Iterator[Field]:
-        """Возвращает итератор по полям."""
-        return iter(self.__fields)
+        self.__element: Final = element
+
+        self.__fields: Final[list[Field]]
+
+    # def __iter__(self) -> Iterator[Field]:
+    #     """Возвращает итератор по полям."""
+    #     return iter(self.__fields)
 
     def __getitem__(self, index: int) -> Field:
         """Возвращает поле по индексу."""
@@ -103,11 +108,11 @@ class Entry:
 
     def is_file(self) -> bool:
         """Проверяет, является ли ."""
-        return self.__is_file
+        return self.__element.is_file
 
     def is_dir(self) -> bool:
         """Проверяет, является ли ."""
-        return self.__is_dir
+        return self.__element.is_dir
 
     @property
     def group(self):
@@ -147,7 +152,7 @@ class Entry:
         return Entry(element.is_dir, group, fields)
 
 
-class LdirData:
+class Data:
     """LdirData class for the LdirFile class, представляет собой список строк в файле. Состоит из объектов Entry."""
 
     def __init__(self, path: str, **config: Any) -> None:
