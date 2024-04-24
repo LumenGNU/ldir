@@ -18,7 +18,7 @@ R = TypeVar("R")
 
 
 def contract(
-    pre_condition: Callable[..., Any], post_condition: Optional[Callable[[Any], Any]] = None
+    pre_condition: Callable[..., Any], post_condition: Optional[Callable[[Any], Any]] = None, /
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Декоратор, применяющий контракты к функции.
 
@@ -46,12 +46,14 @@ def contract(
     return decorator
 
 
-def has_valid_dir_path(*args) -> None:
-    """Проверяет, что позиционный параметр `[1]` (`path`) -- это путь, что он существует и является директорией."""
-    path = args[1]
-    if not (path is not None and os.path.isdir(path)):
-        obj = args[0]
-        raise ContractPreconditionError(obj, f"Указанный путь не существует, или не является директорией: {path}")
+def has_valid_dir_path(*args, **kwargs) -> None:
+    """Проверяет, что позиционный или ключевой параметр `path` — это путь, что он существует и является директорией."""
+    # Извлекает параметр 'path' из kwargs или args[0]
+    path = kwargs.get("path") or (args[0] if args else None)
+
+    # Проверяет, что path предоставлен и является директорией
+    if path is None or not os.path.isdir(path):
+        raise ContractPreconditionError(path, f"Указанный путь не существует, или не является директорией: {path}")
 
 
 if __name__ == "__main__":

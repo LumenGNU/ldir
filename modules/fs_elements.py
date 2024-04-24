@@ -365,7 +365,7 @@ class RootDirectoryElement(DirectoryElement):
     """Класс RootDirectory описывает корневую директорию."""
 
     @contract(has_valid_dir_path)
-    def __init__(self, path: str, configs: Configs, /) -> None:
+    def __init__(self, path: str, configs: Configs) -> None:
         """
         Инициализирует объект RootDirectoryElement.
 
