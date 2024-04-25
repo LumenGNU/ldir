@@ -6,7 +6,7 @@ __file__ = 'GroupedString.py'
 """
 from __future__ import annotations
 from typing import Final, final, Annotated
-from threading import Lock
+from threading import RLock
 from weakref import WeakSet
 
 
@@ -112,13 +112,12 @@ class GroupedString:
     | Aylin Philippe   | aylin.philippe@example.com   | 078 888 01 00 |
     ```
 
-    Тесты:
 
 
 
     """
 
-    __lock: Final = Lock()  # Для обеспечения потокобезопасности # pylint: disable=invalid-name
+    __lock: Final = RLock()  # Для обеспечения потокобезопасности # pylint: disable=invalid-name
 
     __instances: Final[dict[str, WeakSet[GroupedString]]] = {}  # pylint: disable=invalid-name
 
@@ -140,10 +139,19 @@ class GroupedString:
 
     @property
     def value(self) -> tuple[Annotated[str, "text"], Annotated[int, "padding"]]:
+        """
+        Возвращает текст и количество символов, необходимых для выравнивания текста в рамках его группы.
+
+        Returns:
+            tuple[str, int]: Кортеж, содержащий текст экземпляра и дополнительное количество символов.
+        """
         return self.text, self.text_padding_length - len(self.text)
 
     @property
     def text(self) -> str:
+        """
+        Текст экземпляра.
+        """
         return self.__text
 
     @text.setter
@@ -153,15 +161,32 @@ class GroupedString:
 
     @property
     def ljust_text(self) -> str:
-        """ """
+        """
+        Возвращает текст, выровненный по левому краю, дополненный пробелами до максимальной длины в группе.
+
+        Returns:
+            str: Текст, выровненный по левому краю.
+        """
         return self.text.ljust(self.text_padding_length)
 
     @property
     def rjust_text(self) -> str:
+        """
+        Возвращает текст, выровненный по правому краю, дополненный пробелами до максимальной длины в группе.
+
+        Returns:
+            str: Текст, выровненный по правому краю.
+        """
         return self.text.rjust(self.text_padding_length)
 
     @property
     def center_text(self) -> str:
+        """
+        Возвращает текст, центрированный, дополненный пробелами до максимальной длины в группе.
+
+        Returns:
+            str: Центрированный текст.
+        """
         return self.text.center(self.text_padding_length)
 
     @property
@@ -169,13 +194,39 @@ class GroupedString:
         """Группа, к которой принадлежит экземпляр."""
         return self.__group
 
-    # @todo:
-    # @group.setter
-    # def group(self, group: str) -> None:
-    #     """Изменяет группу, к которой принадлежит экземпляр."""
-    #     old_group = self.group
-    #     self.__group = group
-    #     self.update_max_length_for_group()
+    @group.setter
+    def group(self, new_group: str) -> None:
+        """
+        Изменяет группу, к которой принадлежит экземпляр, обновляя все необходимые ссылки
+        и пересчитывая максимальные длины для новой и старой группы.
+
+        Args:
+            new_group (str): Новая группа для этого экземпляра.
+        """
+        old_group = self.__group
+        if old_group == new_group:
+            return  # Если группа не изменяется, ничего не делаем.
+
+        with type(self).__lock:
+            # Удаляем экземпляр из старой группы.
+            type(self).__instances[old_group].discard(self)
+
+            if not type(self).__instances[old_group]:
+                # Если старая группа теперь пуста, удаляем её.
+                del type(self).__instances[old_group]
+                del type(self).__max_length[old_group]
+            else:
+                # Пересчитываем максимальную длину для старой группы.
+                self.update_max_length_for_group(old_group)
+
+            # Добавляем экземпляр в новую группу.
+            self.__group = new_group
+            if new_group not in type(self).__instances:
+                type(self).__instances[new_group] = WeakSet()
+            type(self).__instances[new_group].add(self)
+
+            # Пересчитываем максимальную длину для новой группы.
+            self.update_max_length_for_group(new_group)
 
     @classmethod
     def update_max_length_for_group(cls, group: str) -> None:
@@ -201,6 +252,20 @@ class GroupedString:
             return type(self).__max_length.get(self.group, -1)
 
     @classmethod
+    def text_padding_length_for_group(cls, group: str) -> int:
+        """
+        Возвращает максимальную длину текста в указанной группе.
+
+        Args:
+            group (str): Название группы.
+
+        Returns:
+            int: Максимальная длина текста в группе.
+        """
+        with cls.__lock:
+            return cls.__max_length.get(group, -1)
+
+    @classmethod
     def unify_lengths_for_groups(cls, *args: str) -> None:
         """Устанавливает максимальную длину текста для всех указанных групп равной максимальной длине среди них."""
         with cls.__lock:
@@ -208,22 +273,37 @@ class GroupedString:
             cls.__max_length.update((group, max_) for group in args)
 
     def __del__(self) -> None:
-        # @fixme: использование блокировки внутри деструктора может быть опасно из-за риска взаимной блокировки,
-        # если сборщик мусора вызовет __del__ при уже захваченной блокировке. Важно тестировать этот аспект,
-        # особенно в многопоточной среде.
         with type(self).__lock:
             group_set = self.__instances[self.group]
             group_set.discard(self)
-        if not group_set:
-            del self.__instances[self.group]
-            del self.__max_length[self.group]
-        else:
-            self.update_max_length_for_group(self.group)
+            if not group_set:
+                del self.__instances[self.group]
+                del self.__max_length[self.group]
+            else:
+                self.update_max_length_for_group(self.group)
 
-    # @for_test:
     @classmethod
-    def _get_instances_len(cls):
+    def get_instances_len_all(cls) -> int:
+        """
+        Возвращает общее количество экземпляров во всех группах.
+
+        Returns:
+            int: Общее количество экземпляров.
+        """
         return sum(len(weak_set) for weak_set in cls.__instances.values())
+
+    @classmethod
+    def get_instances_len_for_group(cls, group: str) -> int:
+        """
+        Возвращает количество экземпляров в указанной группе.
+
+        Args:
+            group (str): Название группы.
+
+        Returns:
+            int: Количество экземпляров в группе.
+        """
+        return len(cls.__instances[group])
 
 
 if __name__ == "__main__":
