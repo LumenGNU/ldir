@@ -112,9 +112,6 @@ class GroupedString:
     | Aylin Philippe   | aylin.philippe@example.com   | 078 888 01 00 |
     ```
 
-
-
-
     """
 
     __lock: Final = RLock()  # Для обеспечения потокобезопасности # pylint: disable=invalid-name

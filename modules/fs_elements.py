@@ -33,10 +33,7 @@ import sys
 from fnmatch import fnmatch
 
 from modules.contracts import contract, has_valid_dir_path
-from modules.protocols import (
-    Configs,
-    SortTypeLiteral,
-)
+from modules.protocols import Configs
 from modules.logger import get_logger
 from modules.sort import sort_to
 
@@ -362,7 +359,7 @@ class DirectoryElement(FileSystemElement):
 
 
 class RootDirectoryElement(DirectoryElement):
-    """Класс RootDirectory описывает корневую директорию."""
+    """Класс описывает корневую директорию."""
 
     @contract(has_valid_dir_path)
     def __init__(self, path: str, configs: Configs) -> None:

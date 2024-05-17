@@ -49,7 +49,7 @@ def contract(
 def has_valid_dir_path(*args, **kwargs) -> None:
     """Проверяет, что позиционный или ключевой параметр `path` — это путь, что он существует и является директорией."""
     # Извлекает параметр 'path' из kwargs или args[0]
-    path = kwargs.get("path") or (args[0] if args else None)
+    path = kwargs.get("path") or (args[1] if args else None)
 
     # Проверяет, что path предоставлен и является директорией
     if path is None or not os.path.isdir(path):
